@@ -2,7 +2,7 @@
 // Ejecutar:  node --test tests/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fsplDb, radioFresnelM, abultamientoM, distanciaKm, perdidaFiloCuchilloDb, analizarEnlace, PARAMETROS_DEFECTO } from "../js/calculos.js";
+import { buscarRepetidor, fsplDb, radioFresnelM, abultamientoM, distanciaKm, perdidaFiloCuchilloDb, analizarEnlace, PARAMETROS_DEFECTO } from "../js/calculos.js";
 
 const cerca = (a, b, tol) => assert.ok(Math.abs(a - b) <= tol, `${a} ≠ ${b} (±${tol})`);
 
@@ -26,4 +26,16 @@ test("Cerro que bloquea: la altura recomendada cumple el despeje", () => {
   assert.ok(r.alturaExtraM > 20);
   const h = PARAMETROS_DEFECTO.hTorreA + r.alturaExtraM;
   assert.ok(analizarEnlace(10, elev, { hTorreA: h, hTorreB: h }).fresnelOk);
+});
+
+test("Repetidor: una cordillera exige torres irreales y el repetidor la resuelve", () => {
+  // 30 km, valle a 3000 m con una cordillera de 3300 m en el centro
+  const elev = Array.from({ length: 101 }, (_, i) => 3000 + 300 * Math.exp(-(((i - 50) / 6) ** 2)));
+  const directo = analizarEnlace(30, elev);
+  assert.ok(directo.alturaExtraM > 200, "el enlace directo necesita torres de cientos de metros");
+  const rep = buscarRepetidor(30, elev);
+  assert.ok(Math.abs(rep.indice - 50) <= 3, "el repetidor se ubica en la cumbre");
+  assert.ok(rep.hR <= 30 && rep.realista);
+  assert.ok(rep.salto1.fresnelOk && rep.salto2.fresnelOk);
+  assert.ok(rep.salto1.margenDb > directo.margenDb);
 });
