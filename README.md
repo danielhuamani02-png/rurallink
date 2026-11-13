@@ -38,6 +38,7 @@ js/calculos.js      motor de cálculo
 js/terreno.js       descarga del perfil de elevación
 js/grafico.js       gráfico del perfil (Chart.js)
 js/app.js           lógica de la interfaz y el mapa (Leaflet)
+api/elevacion.js    función de Vercel que consulta Open Topo Data (SRTM 30 m)
 tests/              pruebas del motor (node --test)
 python/             versión de referencia en Python + Streamlit (mismas fórmulas)
 ```
