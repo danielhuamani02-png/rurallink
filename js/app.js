@@ -1,6 +1,6 @@
 /* app.js — Interfaz de RuralLink */
 import { distanciaKm, azimut, analizarEnlace, compararFrecuencias, buscarRepetidor, disenarRepetidor, PARAMETROS_DEFECTO } from "./calculos.js";
-import { obtenerPerfil } from "./terreno.js";
+import { obtenerPerfil, elevaciones } from "./terreno.js";
 import { dibujarPerfil, vistaDirecta, vistaRepetidor } from "./grafico.js";
 
 const $ = (id) => document.getElementById(id);
@@ -150,6 +150,7 @@ async function simular() {
     const perfil = await obtenerPerfil(estado.A, estado.B, { demo: $("demo").checked });
     estado.perfil = { ...perfil, d };
     recalcular();
+    if (!$("demo").checked && estado.rep && !estado.rep.realista && !estado.repManual) await buscarEnCerros();
   } catch (e) {
     mostrarError(`${e.message}\n\nActiva «Modo sin internet» para usar el terreno de demostración.`);
   } finally {
@@ -169,10 +170,10 @@ function recalcular() {
   // repetidor: automático sobre el trayecto o en la posición que eligió el usuario
   if (estado.repManual) {
     const m = estado.repManual;
-    estado.rep = { ...disenarRepetidor(m.perfil1.elev, m.d1, m.perfil2.elev, m.d2, p), pos: m.pos, manual: true };
+    estado.rep = { ...disenarRepetidor(m.perfil1.elev, m.d1, m.perfil2.elev, m.d2, p), pos: m.pos, origen: m.origen || "manual" };
   } else {
     const b = buscarRepetidor(estado.perfil.d, estado.perfil.elev, p);
-    estado.rep = { ...b, pos: estado.perfil.pts[b.indice], manual: false };
+    estado.rep = { ...b, pos: estado.perfil.pts[b.indice], origen: "trayecto" };
   }
   pintarResultados(r, p);
   guardarEnUrl();
@@ -194,7 +195,7 @@ async function moverRepetidor(latlng) {
   $("cargando").hidden = false;
   try {
     const [p1, p2] = await Promise.all([obtenerPerfil(estado.A, pos), obtenerPerfil(pos, estado.B)]);
-    estado.repManual = { pos, d1: distanciaKm(...estado.A, ...pos), d2: distanciaKm(...pos, ...estado.B), perfil1: p1, perfil2: p2 };
+    estado.repManual = { pos, d1: distanciaKm(...estado.A, ...pos), d2: distanciaKm(...pos, ...estado.B), perfil1: p1, perfil2: p2, origen: "manual" };
     estado.verRep = true;
     recalcular();
     aviso("Repetidor recalculado con el terreno real");
@@ -202,6 +203,54 @@ async function moverRepetidor(latlng) {
     mostrarError(e.message);
   } finally { $("cargando").hidden = true; }
 }
+
+/* Búsqueda del repetidor en cerros cercanos (no solo sobre la línea A–B):
+ * 1) se consulta la elevación de una malla de puntos a ambos lados del trayecto,
+ * 2) se eligen los 5 puntos más prominentes,
+ * 3) para cada uno se descargan los perfiles A→R y R→B y se calcula la torre R necesaria,
+ * 4) se queda la ubicación que necesita la torre más baja. */
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+async function buscarEnCerros() {
+  const [A, B] = [estado.A, estado.B], d = estado.perfil.d, p = leerParametros();
+  const kx = 111.32 * Math.cos((A[0] * Math.PI) / 180), ky = 110.57;
+  const ux = ((B[1] - A[1]) * kx) / d, uy = ((B[0] - A[0]) * ky) / d; // dirección A→B (unitaria, en km)
+  const ancho = Math.min(5, Math.max(1, d * 0.3));
+  const cand = [];
+  for (const t of [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+    for (const s of [-1, -0.75, -0.5, -0.25, 0.25, 0.5, 0.75, 1]) {
+      const ex = t * d * ux - s * ancho * uy, ey = t * d * uy + s * ancho * ux;
+      cand.push({ t, pos: [A[0] + ey / ky, A[1] + ex / kx] });
+    }
+  $("cargando").hidden = false;
+  $("cargando").lastChild.textContent = "Buscando cerros cercanos para el repetidor…";
+  try {
+    const { elev } = await elevaciones(cand.map((c) => c.pos));
+    const e0 = estado.perfil.elev[0], e1 = estado.perfil.elev.at(-1);
+    cand.forEach((c, i) => { c.elev = elev[i]; c.prom = elev[i] - (e0 + (e1 - e0) * c.t); });
+    const top = [];
+    for (const c of [...cand].sort((a, b) => b.prom - a.prom)) {
+      if (top.every((o) => Math.hypot(o.pos[0] - c.pos[0], o.pos[1] - c.pos[1]) > (ancho * 0.4) / ky)) top.push(c);
+      if (top.length === 5) break;
+    }
+    let mejor = null;
+    for (const c of top) {
+      await espera(1100); // límite del API público: 1 consulta por segundo
+      const p1 = await obtenerPerfil(A, c.pos);
+      await espera(1100);
+      const p2 = await obtenerPerfil(c.pos, B);
+      const d1 = distanciaKm(...A, ...c.pos), d2 = distanciaKm(...c.pos, ...B);
+      const dis = disenarRepetidor(p1.elev, d1, p2.elev, d2, p);
+      if (!mejor || dis.hR < mejor.dis.hR) mejor = { c, p1, p2, d1, d2, dis };
+    }
+    if (mejor && mejor.dis.hR < estado.rep.hR) {
+      estado.repManual = { pos: mejor.c.pos, d1: mejor.d1, d2: mejor.d2, perfil1: mejor.p1, perfil2: mejor.p2, origen: "cerro" };
+      recalcular();
+      aviso(`Repetidor ubicado en un cerro cercano: torre de ${estado.rep.hR} m`);
+    }
+  } catch (e) { console.warn("Búsqueda en cerros:", e.message); }
+  finally { $("cargando").hidden = true; $("cargando").lastChild.textContent = "Descargando el perfil del terreno…"; }
+}
+$("btn-buscar-cerros").addEventListener("click", async () => { estado.repManual = null; recalcular(); await buscarEnCerros(); });
 
 $("btn-repetidor").addEventListener("click", () => {
   estado.verRep = !estado.verRep; recalcular();
@@ -324,7 +373,7 @@ function pintarOpciones(r, p, rep) {
     dd("Margen", `${fmt(r1.margenDb, 1)} dB`, r1.margenOk ? "bueno" : "malo") +
     dd("Equipos de radio", "2");
   $("op2-datos").innerHTML =
-    dd("Ubicación de R", `km ${fmt(rep.d1, 2)} desde A${rep.manual ? " (manual)" : ""}`) +
+    dd("Ubicación de R", `${fmt(rep.d1, 2)} km de A · ${{ trayecto: "sobre la línea A–B", cerro: "cerro cercano", manual: "elegida por ti" }[rep.origen]}`) +
     dd("Torre R", `${rep.hR} m`, rep.hR > p.hMaxM ? "malo" : "bueno") +
     dd("Torres A y B", `${fmt(p.hTorreA, 0)} m y ${fmt(p.hTorreB, 0)} m (sin cambios)`) +
     dd("Salto A → R", `${fmt(rep.d1, 2)} km · ${fmt(rep.salto1.margenDb, 1)} dB`, rep.salto1.margenOk ? "bueno" : "malo") +

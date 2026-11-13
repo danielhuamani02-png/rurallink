@@ -49,18 +49,22 @@ export function terrenoDemo(n = N_PUNTOS) {
   });
 }
 
+/** Elevación de una lista cualquiera de puntos [lat, lon] (máx. 100) */
+export async function elevaciones(pts) {
+  const errores = [];
+  for (const [nombre, fn] of [["Open Topo Data · SRTM 30 m", openTopoData], ["Open-Meteo · Copernicus DEM 90 m", openMeteo]]) {
+    try { return { elev: await fn(pts), fuente: nombre }; }
+    catch (e) { errores.push(`${nombre}: ${e.message}`); }
+  }
+  throw new Error("No se pudo descargar la elevación del terreno.\n" + errores.join("\n"));
+}
+
 export async function obtenerPerfil(A, B, { demo = false } = {}) {
   const pts = puntosIntermedios(A[0], A[1], B[0], B[1], N_PUNTOS);
   if (demo) return { elev: terrenoDemo(), fuente: "Terreno de demostración (sin conexión)", pts };
   const clave = pts[0].concat(pts[N_PUNTOS - 1]).map((v) => v.toFixed(5)).join(",");
   if (cache.has(clave)) return cache.get(clave);
-  const errores = [];
-  for (const [nombre, fn] of [["Open Topo Data · SRTM 30 m", openTopoData], ["Open-Meteo · Copernicus DEM 90 m", openMeteo]]) {
-    try {
-      const res = { elev: await fn(pts), fuente: nombre, pts };
-      cache.set(clave, res);
-      return res;
-    } catch (e) { errores.push(`${nombre}: ${e.message}`); }
-  }
-  throw new Error("No se pudo descargar la elevación del terreno.\n" + errores.join("\n"));
+  const res = { ...(await elevaciones(pts)), pts };
+  cache.set(clave, res);
+  return res;
 }
