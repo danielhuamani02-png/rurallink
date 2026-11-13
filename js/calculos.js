@@ -55,6 +55,7 @@ export function perdidaFiloCuchilloDb(v) {
 export const PARAMETROS_DEFECTO = {
   fGhz: 5.8, ptxDbm: 25, gtxDbi: 23, grxDbi: 23, perdCablesDb: 2, sensDbm: -80,
   hTorreA: 20, hTorreB: 20, k: 4 / 3, obstaculosM: 0, despejeMin: 0.6, margenMinDb: 15,
+  hMaxM: 60, // altura máxima práctica de una torre (m)
 };
 
 /**
@@ -129,4 +130,62 @@ export function compararFrecuencias(distKm, p0, frecuencias = [2.4, 5.2, 5.8, 11
     const prx = p.ptxDbm + p.gtxDbi + p.grxDbi - fspl - p.perdCablesDb;
     return { fGhz: f, fsplDb: fspl, prxDbm: prx, margenDb: prx - p.sensDbm, r1MaxM: radioFresnelM(distKm / 2, distKm / 2, f) };
   });
+}
+
+/* ======================================================================
+ * REPETIDOR (tercera antena)
+ * Si el enlace directo exige torres demasiado altas, se divide en dos saltos
+ * A → R → B. Las torres A y B quedan con la altura elegida por el usuario y se
+ * calcula la altura mínima de la torre R para que ambos saltos cumplan el despeje.
+ * ====================================================================== */
+
+/** Altura absoluta mínima (m s. n. m.) en el extremo final de un salto para que cumpla
+ *  el despeje, con la antena inicial fija a hIniAbs. Para cada punto j del trayecto:
+ *  la línea de vista pasa por (0, hIni) y (D, hFin) ⇒ hFin ≥ hIni + (necesario_j − hIni)·D/x_j */
+export function alturaRequeridaFin(elev, dKm, hIniAbs, p) {
+  const n = elev.length;
+  let req = -Infinity;
+  for (let j = 1; j < n - 1; j++) {
+    const xj = (dKm * j) / (n - 1);
+    const tef = elev[j] + abultamientoM(xj, dKm - xj, p.k) + p.obstaculosM;
+    const necesario = tef + p.despejeMin * radioFresnelM(xj, dKm - xj, p.fGhz);
+    req = Math.max(req, hIniAbs + ((necesario - hIniAbs) * dKm) / xj);
+  }
+  return req;
+}
+
+const RANGO = { "VIABLE": 0, "VIABLE CON OBSERVACIONES": 1, "NO VIABLE": 2 };
+
+/** Diseña el repetidor dados los perfiles A→R (elev1) y R→B (elev2) */
+export function disenarRepetidor(elev1, d1, elev2, d2, p0 = {}) {
+  const p = { ...PARAMETROS_DEFECTO, ...p0 };
+  const suelo = elev1[elev1.length - 1];
+  const e2 = [suelo, ...elev2.slice(1)]; // mismo punto R en ambos perfiles
+  const hA = elev1[0] + p.hTorreA, hB = e2[e2.length - 1] + p.hTorreB;
+  const req1 = alturaRequeridaFin(elev1, d1, hA, p);
+  const req2 = alturaRequeridaFin([...e2].reverse(), d2, hB, p);
+  const hR = Math.max(6, Math.ceil(Math.max(req1, req2) - suelo)); // mástil mínimo de 6 m
+  const salto1 = analizarEnlace(d1, elev1, { ...p, hTorreB: hR });
+  const salto2 = analizarEnlace(d2, e2, { ...p, hTorreA: hR });
+  const peor = RANGO[salto1.veredicto] >= RANGO[salto2.veredicto] ? salto1 : salto2;
+  return { hR, sueloR: suelo, d1, d2, salto1, salto2, veredicto: peor.veredicto, realista: hR <= p.hMaxM };
+}
+
+/** Busca sobre el trayecto directo el punto donde el repetidor necesita la torre más baja */
+export function buscarRepetidor(distKm, elev, p0 = {}) {
+  const p = { ...PARAMETROS_DEFECTO, ...p0 };
+  const n = elev.length;
+  const hA = elev[0] + p.hTorreA, hB = elev[n - 1] + p.hTorreB;
+  let mejor = null;
+  for (let i = Math.ceil(0.08 * (n - 1)); i <= Math.floor(0.92 * (n - 1)); i++) {
+    const d1 = (distKm * i) / (n - 1), d2 = distKm - d1;
+    const e1 = elev.slice(0, i + 1), e2 = elev.slice(i);
+    const req = Math.max(alturaRequeridaFin(e1, d1, hA, p), alturaRequeridaFin([...e2].reverse(), d2, hB, p));
+    const hR = Math.max(6, req - elev[i]);
+    const desequilibrio = Math.abs(d1 - d2) / distKm; // a igual altura, preferir saltos parecidos
+    const puntaje = hR + 2 * desequilibrio;
+    if (!mejor || puntaje < mejor.puntaje) mejor = { i, puntaje };
+  }
+  const i = mejor.i, d1 = (distKm * i) / (n - 1);
+  return { indice: i, ...disenarRepetidor(elev.slice(0, i + 1), d1, elev.slice(i), distKm - d1, p) };
 }
