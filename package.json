@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/calculos.test.mjs",
-    "dev": "npx serve ."
+    "dev": "npx serve .",
+    "test:e2e": "node tests/e2e.cjs"
   }
 }

@@ -39,7 +39,7 @@ js/terreno.js       descarga del perfil de elevación
 js/grafico.js       gráfico del perfil (Chart.js)
 js/app.js           lógica de la interfaz y el mapa (Leaflet)
 api/elevacion.js    función de Vercel que consulta Open Topo Data (SRTM 30 m)
-tests/              pruebas del motor (node --test)
+tests/              pruebas unitarias (node --test) y funcionales (Playwright)
 python/             versión de referencia en Python + Streamlit (mismas fórmulas)
 ```
 
@@ -49,7 +49,10 @@ No necesita instalación: es una página estática.
 
 ```bash
 npx serve .          # o:  python -m http.server
-npm test             # pruebas del motor de cálculo
+npm test             # 8 pruebas unitarias del motor de cálculo
+npm i --no-save playwright leaflet@1.9.4 chart.js@4.4.1
+python -m http.server 8600 &
+npm run test:e2e     # 20 pruebas funcionales en navegador (Playwright)
 ```
 
 ## Publicar en Vercel
