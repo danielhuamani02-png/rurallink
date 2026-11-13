@@ -85,6 +85,8 @@
           <input type="range" id="despejeMin" min="0.2" max="1" step="0.05"></label>
         <label class="slider">Margen deseado <output id="o-margenMinDb"></output>
           <input type="range" id="margenMinDb" min="5" max="30" step="1"></label>
+        <label class="slider">Altura máxima práctica de torre <output id="o-hMaxM"></output>
+          <input type="range" id="hMaxM" min="15" max="120" step="5"></label>
         <label class="full">Factor k (refracción atmosférica)
           <select id="k">
             <option value="1.3333333333">4/3 · atmósfera estándar</option>
@@ -127,9 +129,37 @@
             <ul id="v-obs"></ul>
             <p class="fuente" id="v-fuente"></p>
           </div>
-          <button type="button" class="apply" id="btn-aplicar" hidden>Aplicar altura recomendada</button>
+                  </div>
+
+        <div class="options" id="opciones" hidden>
+          <div class="options-head">
+            <h3>Soluciones posibles</h3>
+            <p class="muted" id="op-resumen"></p>
+          </div>
+          <div class="opt" id="opt1">
+            <span class="tag" id="op1-tag"></span>
+            <h4><i class="num">1</i> Elevar las torres</h4>
+            <p class="opt-desc">Mantener el enlace directo A → B con antenas más altas.</p>
+            <dl id="op1-datos"></dl>
+            <button type="button" class="secondary" id="btn-aplicar">Aplicar estas alturas</button>
+          </div>
+          <div class="opt" id="opt2">
+            <span class="tag" id="op2-tag"></span>
+            <h4><i class="num">2</i> Agregar un repetidor</h4>
+            <p class="opt-desc">Una tercera antena (R) en un punto alto divide el enlace en dos saltos: A → R → B.</p>
+            <dl id="op2-datos"></dl>
+            <button type="button" class="primary small" id="btn-repetidor">Ver solución con repetidor</button>
+            <p class="hint" id="op2-hint">Puedes arrastrar el marcador <b>R</b> a un cerro cercano: se recalcula con el terreno real.</p>
+          </div>
         </div>
 
+        <div class="card" id="card-saltos" hidden>
+          <div class="card-head"><h3>Enlace con repetidor: A → R → B</h3>
+            <button type="button" class="link" id="btn-quitar-rep">Volver al enlace directo</button></div>
+          <table class="freq" id="t-saltos"></table>
+        </div>
+
+        <h3 class="sec" id="titulo-kpis">Enlace directo A → B</h3>
         <div class="kpis">
           <div class="kpi"><span>Distancia</span><b id="k-dist"></b><small id="k-azi"></small></div>
           <div class="kpi"><span>Pérdida en espacio libre</span><b id="k-fspl"></b><small>UIT-R P.525</small></div>
@@ -140,12 +170,13 @@
 
         <div class="card chart-card">
           <div class="card-head">
-            <h3>Perfil del trayecto</h3>
+            <h3 id="titulo-grafico">Perfil del trayecto</h3>
             <div class="legend">
               <span><i class="sw terr"></i>Terreno + curvatura</span>
               <span><i class="sw fres"></i>1.ª zona de Fresnel</span>
               <span><i class="sw los"></i>Línea de vista</span>
               <span><i class="sw lim"></i>Límite de despeje</span>
+              <span id="ley-rep" hidden><i class="sw rep"></i>Repetidor R</span>
             </div>
           </div>
           <div class="chart-box"><canvas id="grafico"></canvas></div>
@@ -153,7 +184,7 @@
 
         <div class="two">
           <div class="card">
-            <h3>Presupuesto de enlace</h3>
+            <h3>Presupuesto del enlace directo</h3>
             <table class="budget" id="t-presupuesto"></table>
           </div>
           <div class="card">
