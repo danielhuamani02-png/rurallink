@@ -1,0 +1,11 @@
+{
+  "name": "rurallink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simulador de viabilidad de radioenlaces punto a punto para zonas rurales del Perú",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/calculos.test.mjs",
+    "dev": "npx serve ."
+  }
+}
