@@ -19,7 +19,8 @@ async function conTiempo(url, ms = 12000) {
 
 async function openTopoData(pts) {
   const locs = pts.map(([a, o]) => `${a.toFixed(6)},${o.toFixed(6)}`).join("|");
-  const d = await conTiempo(`https://api.opentopodata.org/v1/srtm30m?locations=${encodeURIComponent(locs)}`);
+  // vía la función /api/elevacion de Vercel (el API público no admite CORS desde el navegador)
+  const d = await conTiempo(`/api/elevacion?locations=${encodeURIComponent(locs)}`);
   if (d.status !== "OK") throw new Error(d.error || "respuesta no válida");
   const e = d.results.map((r) => r.elevation);
   if (e.some((v) => v == null)) throw new Error("puntos sin datos");
