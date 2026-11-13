@@ -36,6 +36,8 @@ const capas = {
   "Calles": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }),
 };
 capas["Topográfico"].addTo(mapa);
+let capaActual = "Topográfico";
+mapa.on("baselayerchange", (e) => { capaActual = e.name; guardarEnUrl(); });
 L.control.layers(capas, null, { position: "topright" }).addTo(mapa);
 L.control.scale({ imperial: false }).addTo(mapa);
 
@@ -246,6 +248,7 @@ async function buscarEnCerros() {
       estado.repManual = { pos: mejor.c.pos, d1: mejor.d1, d2: mejor.d2, perfil1: mejor.p1, perfil2: mejor.p2, origen: "cerro" };
       recalcular();
       aviso(`Repetidor ubicado en un cerro cercano: torre de ${estado.rep.hR} m`);
+      if (estado.verRep) mapa.fitBounds(L.latLngBounds([estado.A, estado.B, estado.rep.pos]).pad(0.25));
     }
   } catch (e) { console.warn("Búsqueda en cerros:", e.message); }
   finally { $("cargando").hidden = true; $("cargando").lastChild.textContent = "Descargando el perfil del terreno…"; }
@@ -438,6 +441,7 @@ function guardarEnUrl() {
   CAMPOS.forEach((c) => q.set(c, +p[c].toFixed(4)));
   if ($("demo").checked) q.set("demo", "1");
   if (estado.verRep) q.set("rep", estado.repManual ? estado.repManual.pos.map((v) => v.toFixed(5)).join(",") : "auto");
+  if (capaActual !== "Topográfico") q.set("capa", capaActual === "Calles" ? "calles" : "satelite");
   history.replaceState(null, "", `#${q}`);
 }
 async function cargarDeUrl() {
@@ -448,6 +452,8 @@ async function cargarDeUrl() {
   escribirParametros(p); $("preset").value = "";
   $("demo").checked = q.get("demo") === "1";
   estado.verRep = q.has("rep");
+  const capa = { satelite: "Satélite con nombres", calles: "Calles" }[q.get("capa")];
+  if (capa) { mapa.removeLayer(capas["Topográfico"]); capas[capa].addTo(mapa); capaActual = capa; }
   return q.get("rep");
 }
 $("btn-compartir").addEventListener("click", async () => {
@@ -468,4 +474,5 @@ actualizarGeometria(true);
 if (repUrl !== false) {
   await simular();
   if (repUrl && repUrl !== "auto") { const [la, lo] = repUrl.split(",").map(Number); await moverRepetidor({ lat: la, lng: lo }); }
+  if (estado.verRep && estado.rep) mapa.fitBounds(L.latLngBounds([estado.A, estado.B, estado.rep.pos]).pad(0.25));
 }
